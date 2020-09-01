@@ -1,118 +1,86 @@
 import socket
 import pickle
-import select
-
+import errno
 
 HEADER_LENGTH = 10
 SERVER_IP = socket.gethostname()
 SERVER_PORT = 5000
 
 
-def receive_message(client_socket):
+def receive(readable_socket):
 
-    try:
-        message_header = client_socket.recv(HEADER_LENGTH)
-        if not message_header:
-            return False
+    message_header = readable_socket.recv(HEADER_LENGTH)
+
+    if message_header:
 
         message_length = int(message_header.decode('utf-8'))
-        if message_length < 1 or message_length > 1024:
-            return False
+        message = readable_socket.recv(message_length)
+        message = message.decode('utf-8')
 
-        return {"header": message_header, "data": client_socket.recv(message_length)}
-
-    except:
+        return message
+    else:
         return False
 
 
-def user_auth(client_socket, client_address):
+def send_msg(writable_socket, msg):
 
-    # authentication information is sent currently UNENCRYPTED under following format (after utf-8 decoding):
-    try:
-        message_header = client_socket.recv(HEADER_LENGTH)
-        if not message_header:
-            return False
+    writable_socket.send(f'{len(msg):<{HEADER_LENGTH}}'.encode('utf-8') + msg.encode('utf-8'))
 
-        message_length = int(message_header.decode('utf-8'))
-        if message_length < 1 or message_length > 1024:
-            return False
 
-        auth_data = client_socket.recv(message_length)
-        auth_data = pickle.loads(auth_data)
+def process_warnings(client_socket, warning):
 
-        return auth_data
+    if warning == "closed":
 
-    except:
-        print(f"client error in authentication process from ip {client_address[0]}, port {client_address[1]}")
-        return False
+        print(f"connection closed by the server({SERVER_IP}, {SERVER_PORT})")
+
+    else:
+        print(f"unknown warning received from a client {client_socket.getsockname()}: {warning}")
+
+
+def process_request(client_socket, request):
+
+    if request == "close":
+
+        send_msg(client_socket, "!closed")
+        client_socket.close()
+
+        print(f'connection with ip {client_address[0]}, port {client_address[1]} has been closed as requested by the client')
+
+    if request == "hello":
+
+        send_msg(client_socket, "hello there!")
+
+    else:
+        print(f"unknown request received from a client {client_socket.getsockname()}: {request}")
 
 
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
 server_socket.bind((SERVER_IP, SERVER_PORT))
 server_socket.listen()
 
-# clients information
-
-clients_auth_data = {'admin01': 'testadmin', 'admin02': 'testadmin2'}  # clients authentication data, permanent and unchanging
-
-socket_list = [server_socket]  # online sockets
-socket_addresses = {}  # online sockets corresponding to addresses (ip, port)
-clients_online = {}  # online sockets corresponding to usernames
-
 while True:
 
-    readable_sockets, writable_sockets, exception_sockets = select.select(socket_list, [], [])
+    client_socket, client_address = server_socket.accept()
+    print(f'connection with ip {client_address[0]}, port {client_address[1]} established')
 
-    for current_socket in readable_sockets:
+    if client_socket:
 
-        if current_socket == server_socket:
+        try:
+            while True:
 
-            client_socket, client_address = server_socket.accept()
+                received = receive(client_socket)
 
-            new_user = user_auth(client_socket, client_address)
-            if new_user is not False:
+                if received:
 
-                if new_user['username'] in clients_auth_data.keys() and clients_auth_data[new_user['username']] == new_user['password']:
+                    if received[0] == '/':
+                        process_request(client_socket, received[1:])
+                    elif received[0] == '!':
+                        process_warnings(client_socket, received[1:])
+                    else:
+                        send_msg(client_socket, received)
 
-                    socket_list.append(client_socket)
-                    clients_online[client_socket] = new_user['username']
-                    socket_addresses[client_socket] = client_address
+        except socket.error as error:
 
-                    client_socket.send(bytes("T", 'utf-8'))
-
-                    print(f'connection established from ip {client_address[0]}, port {client_address[1]} as user {new_user["username"]}')
-                else:
-                    client_socket.send(bytes("F", 'utf-8'))
-
-                    print(f'connection refused from ip {client_address[0]}, port {client_address[1]}; invalid auth data for user {new_user["username"]}')
-
-        else:
-            message = receive_message(current_socket)
-
-            if message is False:
-
-                print(f'connection with username {clients_online[current_socket]}, ip {socket_addresses[current_socket][0]}, port {socket_addresses[current_socket][1]} has been closed')
-
-                socket_list.remove(current_socket)
-                clients_online.pop(current_socket)
-                socket_addresses.pop(current_socket)
-
-            else:
-
-                for socket_to_send in socket_list:
-                    if socket_to_send != server_socket and socket_to_send != current_socket:
-
-                        to_send = bytes(clients_online[current_socket], 'utf-8')
-                        to_send = bytes(f"{len(to_send):<{HEADER_LENGTH}}", 'utf-8') + to_send
-
-                        to_send += message['header'] + message['data']
-
-                        socket_to_send.send(to_send)
-
-                print(f'message from user {clients_online[current_socket]}: {message["data"].decode("utf-8")}')
-
-
-
-
+            if error.errno == errno.WSAECONNRESET:
+                print(f'connection with ip {client_address[0]}, port {client_address[1]} was forcibly closed')
+                continue
