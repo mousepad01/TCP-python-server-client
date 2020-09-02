@@ -1,6 +1,9 @@
 import socket
 import select
+import errno
+
 import queue
+
 
 HEADER_LENGTH = 10
 SERVER_IP = socket.gethostname()
@@ -9,26 +12,41 @@ SERVER_PORT = 5000
 
 def receive(readable_socket):
 
-    message_header = readable_socket.recv(HEADER_LENGTH)
+    try:
 
-    if message_header:
+        message_header = readable_socket.recv(HEADER_LENGTH)
 
-        message_length = int(message_header.decode('utf-8'))
-        message = readable_socket.recv(message_length)
-        message = message.decode('utf-8')
+        if message_header:
 
-        return message
-    else:
-        return False
+            message_length = int(message_header.decode('utf-8'))
+            message = readable_socket.recv(message_length)
+            message = message.decode('utf-8')
+
+            return message
+        else:
+            return False
+
+    except socket.error as err:
+
+        if err.errno == errno.WSAECONNRESET:
+            print(f"client with address {readable_socket.getsockname()} has forcibly closed the connection")
+            return False
 
 
 def send_msg(writable_socket, msg):
 
-    writable_socket.send(f'{len(msg):<{HEADER_LENGTH}}'.encode('utf-8') + msg.encode('utf-8'))
+    try:
+
+        writable_socket.send(f'{len(msg):<{HEADER_LENGTH}}'.encode('utf-8') + msg.encode('utf-8'))
+
+    except socket.error as err:
+
+        if err.errno == errno.WSAECONNRESET:
+            print(f"client with address {writable_socket.getsockname()} has forcibly closed the connection")
 
 
 server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server_socket.setblocking(0)
+server_socket.setblocking(False)
 server_socket.bind((SERVER_IP, SERVER_PORT))
 server_socket.listen()
 
@@ -53,7 +71,7 @@ while input_sockets:
             input_sockets.append(connected_socket)
             all_message_queues[connected_socket] = queue.Queue()
 
-            connected_socket.setblocking(0)
+            connected_socket.setblocking(False)
 
         else:  # if there was a message received from a connected client
 
@@ -62,10 +80,10 @@ while input_sockets:
 
                 # puts received messages from a socket to be sent to the same socket (echo server)
 
-                    all_message_queues[r_s].put(message_received)
+                all_message_queues[r_s].put(message_received)
 
-                    if r_s not in output_sockets:
-                        output_sockets.append(r_s)
+                if r_s not in output_sockets:
+                    output_sockets.append(r_s)
 
             else:
 
@@ -75,12 +93,12 @@ while input_sockets:
                 if r_s in output_sockets:
                     output_sockets.remove(r_s)
 
-                del message_received[r_s]
+                del all_message_queues[r_s]
 
     for w_s in writable_sockets:
 
         try:
-            message_to_send = message_received[w_s].get_nowait()
+            message_to_send = all_message_queues[w_s].get_nowait()
 
         except queue.Empty:
             output_sockets.remove(w_s)
@@ -97,4 +115,4 @@ while input_sockets:
 
         e_s.close()
 
-        del message_received[e_s]
+        del all_message_queues[e_s]
