@@ -4,6 +4,9 @@ import errno
 import pickle
 import queue
 
+from sha256 import sha256
+
+
 HEADER_SIZE = 10
 SERVER_IP = socket.gethostname()
 SERVER_PORT = 5000
@@ -83,7 +86,7 @@ def auth_check(to_check_socket):
             auth_data = to_check_socket.recv(auth_length)
             auth_data = pickle.loads(auth_data)
 
-            if auth_data['username'] in AUTH_VALID_DATA.keys() and AUTH_VALID_DATA[auth_data['username']] == auth_data['password']:
+            if auth_data['username'] in AUTH_VALID_DATA.keys() and AUTH_VALID_DATA[auth_data['username']] == sha256(auth_data['password']):
                 return auth_data['username']
             else:
                 return False
@@ -117,9 +120,9 @@ for i in range(cnt_accounts):
     password = account_str[4 + username_length:]
 
     if i < cnt_accounts - 1:
-        AUTH_VALID_DATA.update({username: password[:len(password) - 1]})
+        AUTH_VALID_DATA.update({username: int(password[:len(password) - 1], 16)})
     else:
-        AUTH_VALID_DATA.update({username: password})
+        AUTH_VALID_DATA.update({username: int(password, 16)})
 
     online_user[username] = False
 
