@@ -5,11 +5,16 @@ import pickle
 import queue
 
 from sha256 import sha256
+from RC5 import RC5_key_generator
+from CBC_RC5 import RC5_CBC_encryption, RC5_CBC_decryption
 
 
 HEADER_SIZE = 10
 SERVER_IP = socket.gethostname()
 SERVER_PORT = 5000
+
+KEY = 0
+EXPANDED_KEY = []
 
 AUTH_VALID_DATA = {}
 
@@ -22,8 +27,11 @@ def receive(readable_socket):
         if message_header:
             message_length = int(message_header.decode('utf-8'))
 
-            message_pack = readable_socket.recv(message_length)
-            message_pack = pickle.loads(message_pack)
+            message_pack_encrypted = readable_socket.recv(message_length)
+            message_pack_encrypted = pickle.loads(message_pack_encrypted)
+            message_pack_decrypted = RC5_CBC_decryption(message_pack_encrypted[0], EXPANDED_KEY, message_pack_encrypted[1])
+
+            message_pack = pickle.loads(message_pack_decrypted)
 
             return message_pack  # tuple of (username where it is meant to arrive, message)
 
@@ -55,7 +63,12 @@ def send_msg(writable_socket, msg_pack):
 
     try:
         msg_pack = pickle.dumps(msg_pack)
-        writable_socket.send(f"{len(msg_pack):<{HEADER_SIZE}}".encode('utf-8') + msg_pack)
+        msg_pack_encrypted = RC5_CBC_encryption(msg_pack, EXPANDED_KEY)
+        to_send = pickle.dumps(msg_pack_encrypted)
+
+        to_send = f"{len(to_send):<{HEADER_SIZE}}".encode('utf-8') + to_send
+
+        writable_socket.send(to_send)
 
     except socket.error as err:
 
@@ -83,8 +96,12 @@ def auth_check(to_check_socket):
         if auth_header:
 
             auth_length = int(auth_header.decode('utf-8'))
-            auth_data = to_check_socket.recv(auth_length)
-            auth_data = pickle.loads(auth_data)
+            auth_data_encrypted = to_check_socket.recv(auth_length)
+
+            auth_data_encrypted = pickle.loads(auth_data_encrypted)
+            auth_data_decrypted = RC5_CBC_decryption(auth_data_encrypted[0], EXPANDED_KEY, auth_data_encrypted[1])
+
+            auth_data = pickle.loads(auth_data_decrypted)
 
             if auth_data['username'] in AUTH_VALID_DATA.keys() and AUTH_VALID_DATA[auth_data['username']] == sha256(auth_data['password']):
                 return auth_data['username']
@@ -101,6 +118,8 @@ def auth_check(to_check_socket):
             to_check_socket.close()
             return False
 
+
+print("server is loading...")
 
 # valid auth data load
 
@@ -133,6 +152,15 @@ server_socket.bind((SERVER_IP, SERVER_PORT))
 
 server_socket.listen()
 
+print("socket initialized")
+
+# key init
+
+key_file = open("client_key.txt")
+KEY = int(key_file.read())
+
+EXPANDED_KEY = RC5_key_generator(KEY)
+
 # sockets init
 
 input_sockets = [server_socket]
@@ -142,6 +170,8 @@ username_sockets = {}
 sockets_username = {}
 
 message_queue = {}
+
+print("server is ready to listen to client sockets")
 
 while True:
 
@@ -171,7 +201,7 @@ while True:
                 if new_socket not in message_queue.keys():
                     message_queue[new_socket] = queue.Queue()
 
-                message_queue[new_socket].put(('SERVER', "successful authentication"))
+                message_queue[new_socket].put(('SERVER', "successful authentication! write your messasges as follows: enter the destination username, press ENTER then enter the message you want to send, then press ENTER again"))
 
                 print(f"client with address {new_address} successfully authenticated with username {username}")
             else:
@@ -216,6 +246,8 @@ while True:
 
                 if r_s in output_sockets:
                     output_sockets.remove(r_s)
+                    
+                online_user[sockets_username[r_s]] = False
                 
                 del username_sockets[sockets_username[r_s]]
                 del sockets_username[r_s]
@@ -241,6 +273,8 @@ while True:
 
         if e_s in message_queue.keys():
             del message_queue[e_s]
+
+        online_user[sockets_username[e_s]] = False
 
         del username_sockets[sockets_username[e_s]]
         del sockets_username[e_s]
