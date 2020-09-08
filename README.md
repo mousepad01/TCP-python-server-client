@@ -10,3 +10,4 @@ implemented:
 to do list:
 - end to end encryption 
 - (maybe?) integrating diffie-hellman key exchange protocol for the above mentioned encryption
+- (maybe?) asynchrnous client code, so that receiving and sending messages can happen simultaneously
