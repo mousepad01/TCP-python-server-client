@@ -5,7 +5,8 @@ implemented:
 - login system with username and password
 - passwords are hashed
 - sending messages to specific online users
+- messages are encrypted with RC5 - CBC mode of operation, decrypted on the server and then re-encrypted and sent to specific user (NOT E2EE)
 
 to do list:
-- integrating RC5 with CBC mode of operation to encrypt messages, thus creating end to end encryption
+- end to end encryption 
 - (maybe?) integrating diffie-hellman key exchange protocol for the above mentioned encryption
