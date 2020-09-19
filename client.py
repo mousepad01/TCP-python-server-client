@@ -2,6 +2,9 @@ import socket
 import errno
 import pickle
 
+import asyncio
+import aioconsole
+
 from RC5 import RC5_key_generator
 from CBC_RC5 import RC5_CBC_encryption, RC5_CBC_decryption
 
@@ -12,6 +15,8 @@ SERVER_PORT = 5000
 
 KEY = 0
 EXPANDED_KEY = []
+
+SLEEP_TIME = 0.01  # in seconds
 
 
 def receive(client_socket):
@@ -100,9 +105,47 @@ else:
 
 client_socket.settimeout(1)
 
-# main loop after successful auth
+# main loops after successful auth
 
-while True:
+# due to being implemented without proper user interface, inputs must be read from console in asynchronous way in a limited time
+
+
+async def input_loop():
+
+    while True:
+
+        receiver = await aioconsole.ainput("send message to : ")
+        message_to_send = await aioconsole.ainput("message > ")
+
+        send_msg(client_socket, (receiver, message_to_send))
+
+
+async def receive_loop():
+
+    while True:
+
+        msg_received_pack = receive(client_socket)
+        if msg_received_pack:
+
+            print("(incoming messages, write the destination/ message after receiving following messages)")
+
+            show_msg(msg_received_pack)
+
+        await asyncio.sleep(SLEEP_TIME)
+
+
+async def main_client_loop():
+
+    tasks = [asyncio.create_task(receive_loop()), asyncio.create_task(input_loop())]
+
+    await asyncio.gather(*tasks)
+
+
+asyncio.run(main_client_loop())
+
+# old synchronous version of the implementation
+
+'''while True:
 
     receiver = input("send message to : ")
     message_to_send = input("message > ")
@@ -115,7 +158,7 @@ while True:
         if msg_received_pack:
             show_msg(msg_received_pack)
         else:
-            break
+            break'''
 
 
 
