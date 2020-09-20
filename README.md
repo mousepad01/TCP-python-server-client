@@ -1,6 +1,8 @@
 # TCP-python-server-client
 TCP server and client implementation for a chat application
 
+note: currently configured to run on localhost
+
 implemented:
 - login system with username and password
 - passwords are hashed
