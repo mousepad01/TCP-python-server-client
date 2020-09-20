@@ -1,7 +1,7 @@
 # TCP-python-server-client
 TCP server and client implementation for a chat application
 
-note: currently configured to run on localhost
+note: client currently configured to run on localhost; to make it connect at distance, change SERVER_IP (from client.py) to the corresponding public ipv4 of the server 
 
 implemented:
 - login system with username and password
