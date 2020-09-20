@@ -158,22 +158,7 @@ async def main_client_loop():
 
 asyncio.run(main_client_loop())
 
-# old synchronous version of the implementation
 
-'''while True:
-
-    receiver = input("send message to : ")
-    message_to_send = input("message > ")
-
-    send_msg(client_socket, (receiver, message_to_send), CLIENT_KEY)
-
-    while True:
-
-        msg_received_pack = receive(client_socket, CLIENT_KEY)
-        if msg_received_pack:
-            show_msg(msg_received_pack)
-        else:
-            break'''
 
 
 
