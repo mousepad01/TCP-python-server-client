@@ -6,7 +6,7 @@ implemented:
 - passwords are hashed
 - sending messages to specific online users
 - end to end encryption implemented with RC5 block cipher operating in CBC mode
-- asynchrnous client code (using asyncio and aioconsole - https://pypi.org/project/aioconsole/), so that receiving and sending messages can happen simultaneously
+- asynchronous client code (using asyncio and aioconsole - https://pypi.org/project/aioconsole/), so that receiving and sending messages can happen simultaneously
 
 to do list:
 - integrating diffie-hellman key exchange protocol for the above mentioned encryption
