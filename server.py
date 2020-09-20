@@ -10,7 +10,7 @@ from CBC_RC5 import RC5_CBC_encryption, RC5_CBC_decryption
 
 
 HEADER_SIZE = 10
-SERVER_IP = socket.gethostname()
+SERVER_IP = ''
 SERVER_PORT = 5000
 
 SERVER_KEY = []  # expanded key corresponding to initial key from server_key file
