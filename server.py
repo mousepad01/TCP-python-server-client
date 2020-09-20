@@ -13,13 +13,15 @@ HEADER_SIZE = 10
 SERVER_IP = socket.gethostname()
 SERVER_PORT = 5000
 
-KEY = 0
-EXPANDED_KEY = []
+SERVER_KEY = []  # expanded key corresponding to initial key from server_key file
 
 AUTH_VALID_DATA = {}
 
 
 def receive(readable_socket):
+
+    # function for receiving but NOT DECRYPTING
+    # server DOES NOT (and also shouldn't be able to) DECRYPT user to user messages
 
     try:
 
@@ -27,13 +29,22 @@ def receive(readable_socket):
         if message_header:
             message_length = int(message_header.decode('utf-8'))
 
-            message_pack_encrypted = readable_socket.recv(message_length)
-            message_pack_encrypted = pickle.loads(message_pack_encrypted)
-            message_pack_decrypted = RC5_CBC_decryption(message_pack_encrypted[0], EXPANDED_KEY, message_pack_encrypted[1])
+            encrypted_message_with_destination = readable_socket.recv(message_length)
+            encrypted_message_with_destination = pickle.loads(encrypted_message_with_destination)
 
-            message_pack = pickle.loads(message_pack_decrypted)
+            encrypted_message = encrypted_message_with_destination[1]
+            destination = RC5_CBC_decryption(encrypted_message_with_destination[0][0], SERVER_KEY, encrypted_message_with_destination[0][1]).decode('utf-8')
 
-            return message_pack  # tuple of (username where it is meant to arrive, message)
+            message_pack = (destination, encrypted_message)
+
+            # this IF is not necessary, because the client is not (yet) configured to send messages for the server
+
+            if destination == 'SERVER':
+                message_pack = (destination, RC5_CBC_decryption(encrypted_message[0], SERVER_KEY, encrypted_message[1]).decode('utf-8'))
+
+            # -----------------------------------------------------
+
+            return message_pack  # tuple of (username where it is meant to arrive, encrypted message / decrypted if receiver == 'SERVER')
 
         else:
             return False
@@ -59,13 +70,20 @@ def receive(readable_socket):
             return False
 
 
-def send_msg(writable_socket, msg_pack):
+def send_msg(writable_socket, msg_pack, server_encrypt_check):
 
     try:
-        msg_pack = pickle.dumps(msg_pack)
-        msg_pack_encrypted = RC5_CBC_encryption(msg_pack, EXPANDED_KEY)
-        to_send = pickle.dumps(msg_pack_encrypted)
 
+        if server_encrypt_check is False:
+
+            # it means that the message is already encrypted for the receiver user
+
+            msg_pack_encrypted = (RC5_CBC_encryption(msg_pack[0].encode('utf-8'), SERVER_KEY), msg_pack[1])
+
+        else:
+            msg_pack_encrypted = (RC5_CBC_encryption(msg_pack[0].encode('utf-8'), SERVER_KEY), RC5_CBC_encryption(msg_pack[1].encode('utf-8'), SERVER_KEY))
+
+        to_send = pickle.dumps(msg_pack_encrypted)
         to_send = f"{len(to_send):<{HEADER_SIZE}}".encode('utf-8') + to_send
 
         writable_socket.send(to_send)
@@ -99,7 +117,7 @@ def auth_check(to_check_socket):
             auth_data_encrypted = to_check_socket.recv(auth_length)
 
             auth_data_encrypted = pickle.loads(auth_data_encrypted)
-            auth_data_decrypted = RC5_CBC_decryption(auth_data_encrypted[0], EXPANDED_KEY, auth_data_encrypted[1])
+            auth_data_decrypted = RC5_CBC_decryption(auth_data_encrypted[0], SERVER_KEY, auth_data_encrypted[1])
 
             auth_data = pickle.loads(auth_data_decrypted)
 
@@ -156,10 +174,7 @@ print("socket initialized")
 
 # key init
 
-key_file = open("client_key.txt")
-KEY = int(key_file.read())
-
-EXPANDED_KEY = RC5_key_generator(KEY)
+SERVER_KEY = RC5_key_generator(int(open("server_key.txt").read()))
 
 # sockets init
 
@@ -201,7 +216,7 @@ while True:
                 if new_socket not in message_queue.keys():
                     message_queue[new_socket] = queue.Queue()
 
-                message_queue[new_socket].put(('SERVER', "successful authentication! write your messasges as follows: enter the destination username, press ENTER then enter the message you want to send, then press ENTER again"))
+                message_queue[new_socket].put((('SERVER', "successful authentication! write your messasges as follows: enter the destination username, press ENTER then enter the message you want to send, then press ENTER again"), True))
 
                 print(f"client with address {new_address} successfully authenticated with username {username}")
             else:
@@ -223,7 +238,7 @@ while True:
                         message_queue[destination] = queue.Queue()
 
                     sender = sockets_username[r_s]
-                    message_queue[destination].put((sender, message))
+                    message_queue[destination].put(((sender, message), False))
 
                     if destination not in output_sockets:
                         output_sockets.append(destination)
@@ -237,7 +252,7 @@ while True:
                     if r_s not in message_queue.keys():
                         message_queue[r_s] = queue.Queue()
 
-                    message_queue[r_s].put(('SERVER', f"error: invalid destination username {message_pack[0]}"))
+                    message_queue[r_s].put((('SERVER', f"error: invalid destination username {message_pack[0]}"), True))
 
             '''else:
 
@@ -257,8 +272,8 @@ while True:
 
         try:
 
-            message_to_send = message_queue[w_s].get_nowait()
-            send_msg(w_s, message_to_send)
+            message_to_send = message_queue[w_s].get_nowait()  # message_to_send[0] -> destination + message
+            send_msg(w_s, message_to_send[0], message_to_send[1])  # message_to_send[1] -> if server encrypts or not
 
         except queue.Empty:
             output_sockets.remove(w_s)
